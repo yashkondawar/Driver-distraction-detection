@@ -9,16 +9,12 @@ import imutils
 import time
 import dlib
 import cv2
-<<<<<<< HEAD
 from pygame import mixer
-=======
->>>>>>> 031a33a8a0aa541712e58d0cdecd23a4f86c5c95
 
 #declaring constant parameters
 THRESHOLD = 0.25
 DROWSINESS_INTERVAL = 48
 DISTRACTION_INTERVAL = 48
-<<<<<<< HEAD
 thread=None
 
 class SoundPlayer(Thread):
@@ -44,7 +40,7 @@ def get_args():
     ap = argparse.ArgumentParser()
     ap.add_argument("-p", "--shape-predictor", required=True, help="path to facial landmark predictor")
     ap.add_argument("-a", "--alarm", type=str, default="", help="path alarm .WAV file")
-    ap.add_argument("-w", "--webcam", type=int, default=0, help="index of webcam on system")
+`    ap.add_argument("-w", "--webcam", type=int, default=0, help="index of webcam on system")
     return vars(ap.parse_args())
 
 print('main ...')
