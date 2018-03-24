@@ -8,17 +8,19 @@ from imutils.video import VideoStream
 from imutils import face_utils
 from threading import Thread
 import numpy as np
-import playsound
 import argparse
 import imutils
 import time
 import dlib
 import cv2
+from pygame import mixer
 
-def sound_alarm(path):
-	# play an alarm sound
-	print('the fuck is wrong with you')
-	playsound.playsound(path)
+def sound_alarm(path,pl=True):
+    
+    if pl == True:
+        mixer.init()
+        mixer.music.load(path)
+        mixer.music.play()
 
 def eye_aspect_ratio(eye):
 	# compute the euclidean distances between the two sets of
@@ -162,3 +164,4 @@ while True:
 # do a bit of cleanup
 cv2.destroyAllWindows()
 vs.stop()
+
