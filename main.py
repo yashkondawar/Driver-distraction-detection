@@ -19,8 +19,11 @@ mixer.init()
 EYE_THRESHOLD = 0.25
 MOUTH_THRESHOLD=12
 EYE_DROWSINESS_INTERVAL = 2.0
+
 MOUTH_DROWSINESS_INTERVAL=1.0
+
 DISTRACTION_INTERVAL = 3.0
+
 thread=None
 
 class SoundPlayer(Thread):
@@ -69,11 +72,11 @@ def mouth_aspect_ratio(mouth):
     mar=sum(mars)/len(mars)
     return mar
 
-
+distracton_initlized=False
 eye_initialized=False
 mouth_initialized=False
 def  facial_processing(args):
-    global eye_initialized,mouth_initialized
+    global eye_initialized,mouth_initialized,distracton_initlized
     interval_count = 0
     alarm_type = -1
 
@@ -97,6 +100,8 @@ def  facial_processing(args):
         rects = detector(gray, 0)
         rect=get_max_area_rect(rects)
         if rect!=None:
+            distracton_initlized=False
+
 
             shape = predictor(gray, rect)
             shape = face.shape_to_np(shape)
@@ -123,7 +128,7 @@ def  facial_processing(args):
                 if time.time()-eye_start_time >= EYE_DROWSINESS_INTERVAL:
 
                     alarm_type=0
-                    if not mixer.music.get_busy():
+                    if  not distracton_initlized and not mouth_initialized and not mixer.music.get_busy():
                         cv2.putText(frame, "DONT SLEEP", (10, 30),
                                     cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
 
@@ -160,7 +165,7 @@ def  facial_processing(args):
             else:
                 mouth_initialized=False
 
-                if  not eye_initialized and mixer.music.get_busy():
+                if not distracton_initlized and not eye_initialized and mixer.music.get_busy():
                     mixer.music.stop()
                 #if thread!=None:thread.stop()
 
@@ -172,7 +177,22 @@ def  facial_processing(args):
             cv2.putText(frame, "EAR: {:.2f} MAR{:.2f}".format(eye_aspect_ratio,mar), (0, frame.shape[0]-3),\
                     cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
 
-        
+        else:
+            ##distracted
+            alarm_type=1
+            if not distracton_initlized:
+                distracton_start_time=time.time()
+                distracton_initlized=True
+
+            if time.time()- distracton_start_time> DISTRACTION_INTERVAL:
+                if not eye_initialized and not mouth_initialized and not  mixer.music.get_busy():
+                    print('distracted')
+                    cv2.putText(frame, "EYES ON ROAD", (10, 30),
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+
+                    mixer.music.load(alarm_paths[alarm_type])
+                    mixer.music.play()
+
         cv2.imshow("Frame", frame)
         key = cv2.waitKey(1)&0xFF
         if key == ord("q"):
