@@ -1,8 +1,8 @@
 from pygame import mixer
-
-alarm_paths=['alarm_files\\short_horn.wav',
-             'alarm_files\\long_horn.wav',
-             'alarm_files\\distraction_alert.wav']
+import os
+alarm_paths=[os.path.join('alarm_files','short_horn.wav'),
+             os.path.join('alarm_files','long_horn.wav'),
+             os.path.join('alarm_files','distraction_alert.wav')]
 
 def audioplay(path):
     mixer.init()
