@@ -17,36 +17,14 @@ mixer.init()
 
 #declaring constant parameters
 EYE_THRESHOLD = 0.25
-MOUTH_THRESHOLD=12
 EYE_DROWSINESS_INTERVAL = 2.0
-
+MOUTH_THRESHOLD=0.37
 MOUTH_DROWSINESS_INTERVAL=1.0
-
 DISTRACTION_INTERVAL = 3.0
 
 thread=None
 
-class SoundPlayer(Thread):
-    def __init__(self,type):
-        Thread.__init__(self)
-        self.path=alarm_paths[type]
-        self.path='audio.mp3'
-    def run(self):
-        mixer.init()
-        print('sounding....')
-        mixer.music.load(self.path)
-        mixer.music.play()
-    def stop(self):
-        mixer.music.stop()
 
-
-
-def get_aspect_ratio(eye):
-    vertical_1 = distance.euclidean(eye[1], eye[5])
-    vertical_2 = distance.euclidean(eye[2], eye[4])
-    horizontal = distance.euclidean(eye[0], eye[3])
-    return (vertical_1+vertical_2)/(horizontal*2) #aspect ratio of eye
- 
 def get_args():
     ap = argparse.ArgumentParser()
     ap.add_argument("-p", "--shape-predictor", required=True, help="path to facial landmark predictor")
@@ -54,6 +32,12 @@ def get_args():
     ap.add_argument("-w", "--webcam", type=int, default=0, help="index of webcam on system")
     return vars(ap.parse_args())
 
+def get_eye_aspect_ratio(eye):
+    vertical_1 = distance.euclidean(eye[1], eye[5])
+    vertical_2 = distance.euclidean(eye[2], eye[4])
+    horizontal = distance.euclidean(eye[0], eye[3])
+    return (vertical_1+vertical_2)/(horizontal*2) #aspect ratio of eye
+ 
 
 def get_max_area_rect(rects):
     if len(rects)==0: return
@@ -62,57 +46,55 @@ def get_max_area_rect(rects):
         areas.append(rect.area())
     return rects[areas.index(max(areas))]
 
-def mouth_aspect_ratio(mouth):
+def get_mouth_aspect_ratio(mouth):
     upper=mouth[1:4]
     lower=(mouth[5:8])[::-1]
-    mars=[]
+    horizontal=distance.euclidean(mouth[0],mouth[4])
+    vertical=0
     for upper_coord , lower_coord in zip(upper,lower):
-        mars.append(distance.euclidean(upper_coord,lower_coord))
+        vertical+=distance.euclidean(upper_coord,lower_coord)
 
-    mar=sum(mars)/len(mars)
-    return mar
+    return vertical/(horizontal*3) #mouth aspect ratio
 
-distracton_initlized=False
-eye_initialized=False
-mouth_initialized=False
 def  facial_processing(args):
-    global eye_initialized,mouth_initialized,distracton_initlized
-    interval_count = 0
-    alarm_type = -1
 
+    distracton_initlized = False
+    eye_initialized = False
+    mouth_initialized = False
 
     detector = dlib.get_frontal_face_detector()
     predictor = dlib.shape_predictor(args["shape_predictor"])
 
-    (lStart, lEnd) = face.FACIAL_LANDMARKS_IDXS["left_eye"]
-    (rStart, rEnd) = face.FACIAL_LANDMARKS_IDXS["right_eye"]
+    (ls, le) = face.FACIAL_LANDMARKS_IDXS["left_eye"]
+    (rs, re) = face.FACIAL_LANDMARKS_IDXS["right_eye"]
 
-    vs = video(src=args["webcam"]).start()
+    cap=cv2.VideoCapture(0)
     time.sleep(1.0)
-    thread = None
 
     while True:
-        frame = vs.read()
+
+        _ , frame=cap.read()
         frame = cv2.flip(frame, 1)
-        frame = imutils.resize(frame, width=450)
+        frame = imutils.resize(frame, width=900)
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
         rects = detector(gray, 0)
         rect=get_max_area_rect(rects)
-        if rect!=None:
-            distracton_initlized=False
 
+        if rect!=None:
+
+            distracton_initlized=False
 
             shape = predictor(gray, rect)
             shape = face.shape_to_np(shape)
 
-            leftEye = shape[lStart:lEnd]
-            rightEye = shape[rStart:rEnd]
-            leftEAR = get_aspect_ratio(leftEye)
-            rightEAR = get_aspect_ratio(rightEye)
+            leftEye = shape[ls:le]
+            rightEye = shape[rs:re]
+            leftEAR = get_eye_aspect_ratio(leftEye)
+            rightEAR = get_eye_aspect_ratio(rightEye)
 
-            inner_lips=shape[61:69]
-            mar=mouth_aspect_ratio(inner_lips)
+            inner_lips=shape[60:68]
+            mar=get_mouth_aspect_ratio(inner_lips)
 
             eye_aspect_ratio = (leftEAR + rightEAR) / 2.0
 
@@ -120,76 +102,65 @@ def  facial_processing(args):
             rightEyeHull = cv2.convexHull(rightEye)
             cv2.drawContours(frame, [leftEyeHull], -1, (255, 255, 255), 1)
             cv2.drawContours(frame, [rightEyeHull], -1, (255, 255, 255), 1)
+            lipHull = cv2.convexHull(inner_lips)
+            cv2.drawContours(frame, [lipHull], -1, (255, 255, 255), 1)
+
+            cv2.putText(frame, "EAR: {:.2f} MAR{:.2f}".format(eye_aspect_ratio,mar), (10, frame.shape[0]-3),\
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
 
             if eye_aspect_ratio < EYE_THRESHOLD:
+
                 if not eye_initialized:
                     eye_start_time= time.time()
                     eye_initialized=True
+
                 if time.time()-eye_start_time >= EYE_DROWSINESS_INTERVAL:
-
                     alarm_type=0
-                    if  not distracton_initlized and not mouth_initialized and not mixer.music.get_busy():
-                        cv2.putText(frame, "DONT SLEEP", (10, 30),
-                                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+                    cv2.putText(frame, "YOU ARE SLEEPY...\nPLEASE TAKE A BREAK!", (10, 20),
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
 
+                    if  not distracton_initlized and not mouth_initialized and not mixer.music.get_busy():
                         mixer.music.load(alarm_paths[alarm_type])
                         mixer.music.play()
-
-
             else:
                 eye_initialized=False
-                if mixer.music.get_busy():
+                if not distracton_initlized and not mouth_initialized and mixer.music.get_busy():
                     mixer.music.stop()
-                #if thread!=None:thread.stop()
+
 
             if mar > MOUTH_THRESHOLD:
+
                 if not mouth_initialized:
                     mouth_start_time= time.time()
                     mouth_initialized=True
+
                 if time.time()-mouth_start_time >= MOUTH_DROWSINESS_INTERVAL:
-
                     alarm_type=0
+                    cv2.putText(frame, "YOU ARE YAWNING...\nDO YOU NEED A BREAK?", (10, 40),
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
 
-
-                    print('mouth running..')
-
-                    print('in if')
                     if not mixer.music.get_busy():
-                        cv2.putText(frame, "STOP YAWNING!", (10, 30),
-                                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
-
                         mixer.music.load(alarm_paths[alarm_type])
                         mixer.music.play()
-
-
             else:
                 mouth_initialized=False
-
                 if not distracton_initlized and not eye_initialized and mixer.music.get_busy():
                     mixer.music.stop()
-                #if thread!=None:thread.stop()
 
-
-
-
-            for coor in shape:
-                cv2.circle(frame,(coor[0],coor[1]),1,(255,0,0),-1)
-            cv2.putText(frame, "EAR: {:.2f} MAR{:.2f}".format(eye_aspect_ratio,mar), (0, frame.shape[0]-3),\
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
 
         else:
-            ##distracted
+
             alarm_type=1
             if not distracton_initlized:
                 distracton_start_time=time.time()
                 distracton_initlized=True
 
             if time.time()- distracton_start_time> DISTRACTION_INTERVAL:
-                if not eye_initialized and not mouth_initialized and not  mixer.music.get_busy():
-                    print('distracted')
-                    cv2.putText(frame, "EYES ON ROAD", (10, 30),
-                                cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
 
+                cv2.putText(frame, "EYES ON ROAD", (10, 20),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
+
+                if not eye_initialized and not mouth_initialized and not  mixer.music.get_busy():
                     mixer.music.load(alarm_paths[alarm_type])
                     mixer.music.play()
 
@@ -199,7 +170,7 @@ def  facial_processing(args):
             break
 
     cv2.destroyAllWindows()
-    vs.stop()
+    cap.release()
 
 
 if __name__=='__main__':
